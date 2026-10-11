@@ -1,0 +1,44 @@
+# Project configuration for the LLMOps course, filled in for you at onboarding.
+# Resources are provisioned at onboarding except the volume, which you create during the course.
+
+# Your usage policy: set it on every serverless job, endpoint and app you create.
+usage_policy_id: "0476cb4f-cbf4-34bc-ab5e-133c637fe2d8"
+
+# Lakebase projects may be shared across environments; Unity Catalog
+# schemas remain separate. Your cohort provisions the Lakebase values below.
+
+# Development: your own schema in the dev catalog, which you manage and work in.
+dev:
+  catalog: "llmops_dev"
+  schema: "mwagenaar"
+  volume: "arxiv_files"
+  llm_endpoint: "course_ops.gateway.chat"
+  embedding_endpoint: "course_ops.gateway.embed"
+  warehouse_id: "d0a9aaf5c9434b89"
+  experiment_path: "/llmops/mwagenaar-dev"
+  # Your provisioned Lakebase project.
+  lakebase_instance: "lb-llmops-mwagenaar"
+
+# Acceptance: your schema in the acceptance catalog, written by your deploys; you read it.
+acc:
+  catalog: "llmops_acc"
+  schema: "mwagenaar"
+  volume: "arxiv_files"
+  llm_endpoint: "course_ops.gateway.chat"
+  embedding_endpoint: "course_ops.gateway.embed"
+  warehouse_id: "d0a9aaf5c9434b89"
+  experiment_path: "/llmops/mwagenaar-acc"
+  # Your provisioned Lakebase project for this environment.
+  lakebase_instance: "lb-llmops-mwagenaar"
+
+# Production: your schema in the production catalog, written by your deploys; you read it.
+prd:
+  catalog: "llmops_prd"
+  schema: "mwagenaar"
+  volume: "arxiv_files"
+  llm_endpoint: "course_ops.gateway.chat"
+  embedding_endpoint: "course_ops.gateway.embed"
+  warehouse_id: "d0a9aaf5c9434b89"
+  experiment_path: "/llmops/mwagenaar-prd"
+  # Your provisioned Lakebase project for this environment.
+  lakebase_instance: "lb-llmops-mwagenaar"
