@@ -17,6 +17,8 @@ class ProjectConfig(BaseModel):
     embedding_endpoint: str = Field(..., description="AI Gateway embedding model service name")
     experiment_path: str = Field(..., description="MLflow experiment path for this environment")
     warehouse_id: str = Field(..., description="Warehouse ID")
+    metadata_table: str = Field(..., description="Meeting document metadata table name")
+    chunks_table: str = Field(..., description="Document chunk table name")
     genie_space_id: str | None = Field(None, description="Genie space ID for MCP integration")
     system_prompt: str = Field(
         default="You are a helpful AI assistant that helps users find and understand research papers.",
@@ -49,7 +51,7 @@ class ProjectConfig(BaseModel):
         return cls(**config_data[env])
 
     @property
-    def schema(self) -> str:
+    def schema(self) -> str:  # type: ignore
         """Alias for db_schema for backward compatibility."""
         return self.db_schema
 
@@ -62,6 +64,18 @@ class ProjectConfig(BaseModel):
     def full_volume_path(self) -> str:
         """Get fully qualified volume path."""
         return f"{self.catalog}.{self.schema}.{self.volume}"
+
+    def get_full_table_name(self, table_name: str) -> str:
+        """Build a fully qualified table name in this environment's schema.
+
+        Args:
+            table_name: Unqualified table name from the environment configuration.
+
+        Returns:
+            Fully qualified Unity Catalog table name.
+
+        """
+        return f"{self.full_schema_name}.{table_name}"
 
 
 def load_config(config_path: str = "project_config.yml", env: str = "dev") -> ProjectConfig:

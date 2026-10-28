@@ -11,11 +11,13 @@ usage_policy_id: "0476cb4f-cbf4-34bc-ab5e-133c637fe2d8"
 dev:
   catalog: "llmops_dev"
   schema: "mwagenaar"
-  volume: "arxiv_files"
+  volume: "polderbot"
   llm_endpoint: "course_ops.gateway.chat"
   embedding_endpoint: "course_ops.gateway.embed"
   warehouse_id: "d0a9aaf5c9434b89"
   experiment_path: "/llmops/mwagenaar-dev"
+  metadata_table: "documents_metadata"
+  chunks_table: "document_chunks"
   # Your provisioned Lakebase project.
   lakebase_instance: "lb-llmops-mwagenaar"
 
@@ -23,11 +25,13 @@ dev:
 acc:
   catalog: "llmops_acc"
   schema: "mwagenaar"
-  volume: "arxiv_files"
+  volume: "polderbot"
   llm_endpoint: "course_ops.gateway.chat"
   embedding_endpoint: "course_ops.gateway.embed"
   warehouse_id: "d0a9aaf5c9434b89"
   experiment_path: "/llmops/mwagenaar-acc"
+  metadata_table: "documents_metadata"
+  chunks_table: "document_chunks"
   # Your provisioned Lakebase project for this environment.
   lakebase_instance: "lb-llmops-mwagenaar"
 
@@ -35,10 +39,12 @@ acc:
 prd:
   catalog: "llmops_prd"
   schema: "mwagenaar"
-  volume: "arxiv_files"
+  volume: "polderbot"
   llm_endpoint: "course_ops.gateway.chat"
   embedding_endpoint: "course_ops.gateway.embed"
   warehouse_id: "d0a9aaf5c9434b89"
   experiment_path: "/llmops/mwagenaar-prd"
+  metadata_table: "documents_metadata"
+  chunks_table: "document_chunks"
   # Your provisioned Lakebase project for this environment.
   lakebase_instance: "lb-llmops-mwagenaar"

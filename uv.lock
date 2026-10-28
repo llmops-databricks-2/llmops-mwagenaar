@@ -107,19 +107,6 @@ wheels = [
 ]
 
 [[package]]
-name = "arxiv"
-version = "2.3.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "feedparser" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/95/65e38ddfb54762a8f1777bbe80da2cebf7941376e67a2212de487d9372db/arxiv-2.3.1.tar.gz", hash = "sha256:08567185dfc102c8d349de4b9e84dfde0af46d6402486e3009afc90f8ccf9709", size = 16692, upload-time = "2025-11-13T06:22:59.853Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/7f/340847023184305a6378d75ec71e1dd38a942dfe71b7c29314b8fbe26948/arxiv-2.3.1-py3-none-any.whl", hash = "sha256:eb5a0b76808cc0a16de0c1448df0f927a3cf576096686d8e335a98b8872df1be", size = 11565, upload-time = "2025-11-13T06:22:58.662Z" },
-]
-
-[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -559,27 +546,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9a/40/a212bffb9809afb9a94b250f11e0c29fd8b2589ec92e4bedd1cc7adf9938/fastapi-0.159.1.tar.gz", hash = "sha256:b45b1ec57f3aa4d2f80f09bfbcf068b46764a2ee892e56753f35bb3d9d845ce2", size = 522004, upload-time = "2026-10-21T20:59:29.054Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8d/35/b03b5df04a1a8ee400c9df4b1795af84370b2bb6f1cc4be57c0b79688d00/fastapi-0.159.1-py3-none-any.whl", hash = "sha256:49b94c29afec2fca1390e9c39be202c59755d5cda8e4f1148a133761e4313e7e", size = 149604, upload-time = "2026-10-21T20:59:27.58Z" },
-]
-
-[[package]]
-name = "feedparser"
-version = "6.0.14"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "feedparser-sgmllib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/37/8a/a53da4a77352045d277978a2df322d5379369f9deb1707178899ff7e1121/feedparser-6.0.14.tar.gz", hash = "sha256:088679b0c4b543ee211a820dd544698c76a402122eae7473c04a43425f283d06", size = 286108, upload-time = "2026-07-30T14:07:40.491Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/61/f04912e63702e73fb2a378f9c0a1ad9eb17a334a11a6b3fe1daa593903c2/feedparser-6.0.14-py3-none-any.whl", hash = "sha256:e35e3f760151b0c3b22cac9684155cae186a233e16c49bcbc6c49e91e3131137", size = 80668, upload-time = "2026-07-30T14:07:39.175Z" },
-]
-
-[[package]]
-name = "feedparser-sgmllib"
-version = "2.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/da/df/38596299216e5c22d60ed7f97902bb2bc72cfb95f732400f4fa976fd2e62/feedparser_sgmllib-2.1.0.tar.gz", hash = "sha256:61facf2918c4389b5b00714f76c5e03431ffcd94cd1f51d657edd6cd7c396579", size = 26845, upload-time = "2026-08-02T21:27:53.891Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/a0/79a31f898092e145bd66e2b338fb0656979acb2bbbcae8220940fbfcd820/feedparser_sgmllib-2.1.0-py3-none-any.whl", hash = "sha256:2cab2d43b95a954f920f18aebce7a4dbbb3f539780b127e2aa114f579821e01d", size = 11652, upload-time = "2026-08-02T21:27:52.894Z" },
 ]
 
 [[package]]
@@ -1424,7 +1390,6 @@ wheels = [
 name = "polderbot"
 source = { editable = "." }
 dependencies = [
-    { name = "arxiv" },
     { name = "backoff" },
     { name = "cffi" },
     { name = "cloudpickle" },
@@ -1463,7 +1428,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arxiv", specifier = "==2.3.1" },
     { name = "backoff", specifier = "==2.2.1" },
     { name = "cffi", specifier = "==1.17.1" },
     { name = "cloudpickle", specifier = "==3.0.0" },

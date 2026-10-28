@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 import httpx
 
-from polderbot.openbesluitvorming.models import (
+from polderbot.ingestion.models import (
     AgendaItem,
     EntityDetail,
     MeetingDocument,
