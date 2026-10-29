@@ -9,7 +9,7 @@ from polderbot.config import load_config
 from polderbot.synced_tables import get_document_chunks_synced_table_name
 from polderbot.vector_search import LakebasePgVectorManager
 
-_QUERY = "acties algemeen bestuur"
+_QUERY = "elahuizen huidige status"
 _NUM_RESULTS = 5
 _TEXT_PREVIEW_LENGTH = 150
 _RESULT_COLUMNS = ("id", "document_id", "document_title", "document_name", "meeting_title", "text")
