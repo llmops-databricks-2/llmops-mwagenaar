@@ -1,10 +1,13 @@
 """Configuration management for Arxiv Curator."""
 
-import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from pyspark.sql import SparkSession
 
 
 class ProjectConfig(BaseModel):
@@ -16,7 +19,11 @@ class ProjectConfig(BaseModel):
     llm_endpoint: str = Field(..., description="AI Gateway chat model service name")
     embedding_endpoint: str = Field(..., description="AI Gateway embedding model service name")
     experiment_path: str = Field(..., description="MLflow experiment path for this environment")
+    lakebase_project_id: str = Field(..., description="Lakebase project ID")
     warehouse_id: str = Field(..., description="Warehouse ID")
+    metadata_table: str = Field(..., description="Meeting document metadata table name")
+    chunks_table: str = Field(..., description="Document chunk table name")
+    usage_policy_id: str | None = Field(None, description="Serverless usage policy ID")
     genie_space_id: str | None = Field(None, description="Genie space ID for MCP integration")
     system_prompt: str = Field(
         default="You are a helpful AI assistant that helps users find and understand research papers.",
@@ -46,10 +53,10 @@ class ProjectConfig(BaseModel):
         if env not in config_data:
             raise ValueError(f"Environment '{env}' not found in config file")
 
-        return cls(**config_data[env])
+        return cls(**{"usage_policy_id": config_data.get("usage_policy_id"), **config_data[env]})
 
     @property
-    def schema(self) -> str:
+    def schema(self) -> str:  # type: ignore
         """Alias for db_schema for backward compatibility."""
         return self.db_schema
 
@@ -62,6 +69,18 @@ class ProjectConfig(BaseModel):
     def full_volume_path(self) -> str:
         """Get fully qualified volume path."""
         return f"{self.catalog}.{self.schema}.{self.volume}"
+
+    def get_full_table_name(self, table_name: str) -> str:
+        """Build a fully qualified table name in this environment's schema.
+
+        Args:
+            table_name: Unqualified table name from the environment configuration.
+
+        Returns:
+            Fully qualified Unity Catalog table name.
+
+        """
+        return f"{self.full_schema_name}.{table_name}"
 
 
 def load_config(config_path: str = "project_config.yml", env: str = "dev") -> ProjectConfig:
@@ -89,11 +108,17 @@ def load_config(config_path: str = "project_config.yml", env: str = "dev") -> Pr
     return ProjectConfig.from_yaml(config_path, env)
 
 
-def get_env() -> str:
-    """Get current environment from environment variable.
+def get_env(spark: "SparkSession") -> str:
+    """Get current environment from dbutils widget, falling back to ENV variable or 'dev'.
 
     Returns:
         Environment name (dev, acc, or prd)
 
     """
-    return os.getenv("ENV", "dev")
+    try:
+        from pyspark.dbutils import DBUtils
+
+        dbutils = DBUtils(spark)
+        return dbutils.widgets.get("env")
+    except Exception:
+        return "dev"
