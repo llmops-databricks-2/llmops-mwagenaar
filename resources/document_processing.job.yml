@@ -1,0 +1,29 @@
+resources:
+  jobs:
+    ingestion:
+      name: job-document-processing-mwagenaar-${bundle.target}
+      budget_policy_id: "0476cb4f-cbf4-34bc-ab5e-133c637fe2d8"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"
+            dependencies:
+              - ../dist/*.whl
+
+      tasks:
+        - task_key: ingest
+          environment_key: default
+          notebook_task:
+            notebook_path: deployment_notebooks/ingest_documents.py
+            base_parameters:
+              env: ${bundle.target}
+        - task_key: embed_documents
+          depends_on:
+            - task_key: ingest
+          environment_key: default
+          notebook_task:
+            notebook_path: deployment_notebooks/embed_documents.py
+            base_parameters:
+              env: ${bundle.target}
+              ingestion_batch_id: "{{tasks.ingest.values.ingestion_batch_id}}"
+              ingested_count: "{{tasks.ingest.values.ingested_count}}"

@@ -2,9 +2,13 @@
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from pyspark.sql import SparkSession
 
 
 class ProjectConfig(BaseModel):
@@ -16,6 +20,7 @@ class ProjectConfig(BaseModel):
     llm_endpoint: str = Field(..., description="AI Gateway chat model service name")
     embedding_endpoint: str = Field(..., description="AI Gateway embedding model service name")
     experiment_path: str = Field(..., description="MLflow experiment path for this environment")
+    lakebase_project_id: str = Field(..., description="Lakebase project ID")
     warehouse_id: str = Field(..., description="Warehouse ID")
     metadata_table: str = Field(..., description="Meeting document metadata table name")
     chunks_table: str = Field(..., description="Document chunk table name")
@@ -103,11 +108,17 @@ def load_config(config_path: str = "project_config.yml", env: str = "dev") -> Pr
     return ProjectConfig.from_yaml(config_path, env)
 
 
-def get_env() -> str:
-    """Get current environment from environment variable.
+def get_env(spark: "SparkSession") -> str:
+    """Get current environment from dbutils widget, falling back to ENV variable or 'dev'.
 
     Returns:
         Environment name (dev, acc, or prd)
 
     """
-    return os.getenv("ENV", "dev")
+    try:
+        from pyspark.dbutils import DBUtils
+
+        dbutils = DBUtils(spark)
+        return dbutils.widgets.get("env")
+    except Exception:
+        return "dev"

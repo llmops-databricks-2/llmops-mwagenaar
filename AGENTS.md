@@ -43,3 +43,6 @@
   as named constants instead.
 - Keep __init__.py files blank unless they need to perform package initialization.
 - Function and method names should start with a verb.
+- Prefer early returns to reduce nested code and improve readability.
+- Put public functions at the top of the module and private helpers below them, so
+  that the module's interface is immediately clear to readers.
