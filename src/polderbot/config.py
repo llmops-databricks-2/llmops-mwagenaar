@@ -1,6 +1,5 @@
 """Configuration management for Arxiv Curator."""
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +23,7 @@ class ProjectConfig(BaseModel):
     warehouse_id: str = Field(..., description="Warehouse ID")
     metadata_table: str = Field(..., description="Meeting document metadata table name")
     chunks_table: str = Field(..., description="Document chunk table name")
+    usage_policy_id: str | None = Field(None, description="Serverless usage policy ID")
     genie_space_id: str | None = Field(None, description="Genie space ID for MCP integration")
     system_prompt: str = Field(
         default="You are a helpful AI assistant that helps users find and understand research papers.",
@@ -53,7 +53,7 @@ class ProjectConfig(BaseModel):
         if env not in config_data:
             raise ValueError(f"Environment '{env}' not found in config file")
 
-        return cls(**config_data[env])
+        return cls(**{"usage_policy_id": config_data.get("usage_policy_id"), **config_data[env]})
 
     @property
     def schema(self) -> str:  # type: ignore

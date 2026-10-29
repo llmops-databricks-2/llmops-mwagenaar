@@ -31,6 +31,38 @@ class MeetingDocumentMetadata(BaseModel):
     ingestion_batch_id: str | None = None
 
 
+def get_last_ingested_meeting_id(spark: SparkSession, metadata_table: str) -> str | None:
+    """Find the last meeting represented in the most recent metadata write.
+
+    Snapshot meeting IDs are ordered by ID. Rows in one write share an
+    ingestion timestamp, so the greatest meeting ID breaks timestamp ties.
+
+    Args:
+        spark: Spark session used to read the metadata table.
+        metadata_table: Fully qualified Delta table name for documents.
+
+    Returns:
+        The last ingested meeting ID, or None if the table is absent or empty.
+
+    Raises:
+        ValueError: If the latest metadata row has no meeting ID.
+
+    """
+    if not spark.catalog.tableExists(metadata_table):
+        return None
+
+    row = (
+        spark.table(metadata_table)
+        .orderBy(["ingest_ts", "meeting_id"], ascending=[False, False])
+        .select("meeting_id")
+        .first()
+    )
+    if row is None:
+        return None
+
+    return row.meeting_id
+
+
 def ingest_meeting_documents(
     spark: SparkSession,
     meeting_documents: Iterable[MeetingDocument],

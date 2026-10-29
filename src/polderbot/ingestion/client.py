@@ -1,4 +1,4 @@
-"""HTTP client for the OpenBesluitvorming entity endpoint."""
+"""HTTP client for the OpenBesluitvorming entity and snapshot endpoints."""
 
 from __future__ import annotations
 
@@ -14,9 +14,14 @@ from polderbot.ingestion.models import (
     AgendaItem,
     EntityDetail,
     MeetingDocument,
+    SnapshotPage,
+    SnapshotRecord,
 )
 
 BASE_URL = "https://openbesluitvorming.nl"
+DEFAULT_SOURCE = "wetterskip_fryslan"
+DEFAULT_EXPORT_LIMIT = 500
+DEFAULT_SNAPSHOT_CURSOR = "meeting"
 RATE_LIMIT_REQUEST_COST = 1.0
 
 type AgendaItemPath = tuple[AgendaItem, ...]
@@ -30,7 +35,7 @@ class EntityNotFoundError(Exception):
 
 
 class OpenBesluitvormingClient:
-    """Retrieve OpenBesluitvorming entity details.
+    """Retrieve OpenBesluitvorming entity details and snapshot exports.
 
     The client can be used as a context manager. It closes only an HTTP client
     that it created itself; caller-provided clients remain caller-managed.
@@ -39,6 +44,7 @@ class OpenBesluitvormingClient:
     def __init__(
         self,
         *,
+        source: str = DEFAULT_SOURCE,
         base_url: str = BASE_URL,
         timeout: float = 30.0,
         max_rate_limit_retries: int = 3,
@@ -47,6 +53,7 @@ class OpenBesluitvormingClient:
         """Initialize the client.
 
         Args:
+            source: OpenBesluitvorming source key used for snapshot exports.
             base_url: Base URL used when creating an internal HTTP client.
             timeout: Timeout in seconds for requests made by an internal client.
             max_rate_limit_retries: Maximum number of retries after a
@@ -55,12 +62,15 @@ class OpenBesluitvormingClient:
                 client creates and closes its own HTTP client.
 
         Raises:
-            ValueError: If ``max_rate_limit_retries`` is negative.
+            ValueError: If ``source`` is empty or ``max_rate_limit_retries`` is negative.
 
         """
+        if not source:
+            raise ValueError("source must not be empty")
         if max_rate_limit_retries < 0:
             raise ValueError("max_rate_limit_retries must be at least zero")
 
+        self.source = source
         self.max_rate_limit_retries = max_rate_limit_retries
         self._client = client or httpx.Client(base_url=base_url, timeout=timeout)
         self._owns_client = client is None
@@ -142,6 +152,84 @@ class OpenBesluitvormingClient:
             )
 
         return meeting_documents
+
+    def get_next_meeting_ids(
+        self,
+        limit: int,
+        *,
+        cursor: str = DEFAULT_SNAPSHOT_CURSOR,
+    ) -> list[str]:
+        """Fetch up to ``limit`` meeting IDs from the snapshot export.
+
+        Args:
+            limit: Maximum number of meeting IDs to return.
+            cursor: Starting or resume cursor; defaults to ``meeting``. Use
+                the last meeting ID from a previous result to resume.
+
+        Returns:
+            Meeting IDs in export order. An empty list means no further
+            meetings were found. Deleted records and records for other entity
+            types are excluded.
+
+        Raises:
+            httpx.HTTPStatusError: If a snapshot request fails after retries.
+            pydantic.ValidationError: If a record does not match the model.
+            ValueError: If the limit, rate-limit headers, or pagination is invalid.
+
+        """
+        if limit <= 0:
+            raise ValueError("limit must be greater than zero")
+        if not cursor:
+            raise ValueError("cursor must not be empty")
+
+        next_cursor = cursor
+        seen_cursors = {cursor}
+        meeting_ids: list[str] = []
+        while True:
+            page_limit = min(limit - len(meeting_ids), DEFAULT_EXPORT_LIMIT)
+            page = self._get_snapshot_page(cursor=next_cursor, limit=page_limit)
+            if len(page.records) > page_limit:
+                raise ValueError("Snapshot page exceeds the requested limit")
+            meeting_ids.extend(
+                record.entity_id for record in page.records if record.op == "upsert" and record.entity_type == "Meeting"
+            )
+
+            if not page.has_more:
+                return meeting_ids
+            next_cursor = page.next_cursor
+            if not next_cursor or next_cursor in seen_cursors:
+                raise ValueError("Snapshot page has no new continuation cursor")
+            if len(meeting_ids) == limit:
+                return meeting_ids
+            seen_cursors.add(next_cursor)
+
+    def _get_snapshot_page(
+        self,
+        *,
+        cursor: str,
+        limit: int = DEFAULT_EXPORT_LIMIT,
+    ) -> SnapshotPage:
+        """Fetch and validate one NDJSON snapshot page.
+
+        Args:
+            cursor: Cursor from which to retrieve the page.
+            limit: Maximum number of records requested.
+
+        Returns:
+            Validated records and pagination headers.
+
+        """
+        params = {"source": self.source, "limit": str(limit), "cursor": cursor}
+
+        response = self._get("/api/export/snapshot", params=params)
+        try:
+            return SnapshotPage(
+                records=[SnapshotRecord.model_validate_json(line) for line in response.iter_lines() if line.strip()],
+                next_cursor=response.headers.get("X-Next-Cursor"),
+                has_more=response.headers.get("X-Has-More") == "true",
+            )
+        finally:
+            response.close()
 
     def _get_entity(self, entity_id: str) -> EntityDetail:
         """Fetch and validate one full entity detail response.

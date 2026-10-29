@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -117,3 +117,27 @@ class MeetingDocument(OpenBesluitvormingModel):
     agenda_item_path: tuple[AgendaItem, ...]
     document_link: AgendaDocumentLink
     document: Document
+
+
+class SnapshotRecord(OpenBesluitvormingModel):
+    """A record from the OpenBesluitvorming snapshot export."""
+
+    seq: int
+    op: Literal["upsert", "delete"]
+    time: AwareDatetime
+    entity_id: EntityRef
+    entity_type: str
+    source_key: str
+    supplier: str
+    commit_id: str
+    content_hash: str
+    schema_version: str
+    payload: Any = None
+
+
+class SnapshotPage(OpenBesluitvormingModel):
+    """Snapshot records and pagination information from response headers."""
+
+    records: list[SnapshotRecord]
+    next_cursor: str | None = None
+    has_more: bool
