@@ -1,0 +1,18 @@
+resources:
+  jobs:
+    hybrid_search:
+      name: job-hybrid-search-mwagenaar-${bundle.target}
+      budget_policy_id: "0476cb4f-cbf4-34bc-ab5e-133c637fe2d8"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"
+            dependencies:
+              - ../dist/*.whl
+      tasks:
+        - task_key: execute_hybrid_search
+          environment_key: default
+          notebook_task:
+            notebook_path: deployment_notebooks/hybrid_search.py
+            base_parameters:
+              env: ${bundle.target}
