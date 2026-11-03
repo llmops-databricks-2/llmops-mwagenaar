@@ -1,5 +1,7 @@
 # Project configuration for the LLMOps course, filled in for you at onboarding.
 # Resources are provisioned at onboarding except the volume, which you create during the course.
+# embedding_endpoint is the serving endpoint for ai_query, AI Search and DatabricksServingEndpoint;
+# embedding_service is the AI Gateway model service for the OpenAI client (README.md).
 
 # Your usage policy: set it on every serverless job, endpoint and app you create.
 usage_policy_id: "0476cb4f-cbf4-34bc-ab5e-133c637fe2d8"
@@ -14,7 +16,8 @@ dev:
   volume: "polderbot"
   llm_endpoint: "course_ops.gateway.chat"
   embedding_endpoint: "databricks-gte-large-en"
-  warehouse_id: "d0a9aaf5c9434b89"
+  embedding_service: "databricks-gte-large-en"
+  warehouse_id: "77533c87900b022b"
   experiment_path: "/llmops/mwagenaar-dev"
   metadata_table: "documents_metadata"
   chunks_table: "document_chunks"
@@ -28,7 +31,8 @@ acc:
   volume: "polderbot"
   llm_endpoint: "course_ops.gateway.chat"
   embedding_endpoint: "databricks-gte-large-en"
-  warehouse_id: "d0a9aaf5c9434b89"
+  embedding_service: "databricks-gte-large-en"
+  warehouse_id: "77533c87900b022b"
   experiment_path: "/llmops/mwagenaar-acc"
   metadata_table: "documents_metadata"
   chunks_table: "document_chunks"
@@ -42,7 +46,8 @@ prd:
   volume: "polderbot"
   llm_endpoint: "course_ops.gateway.chat"
   embedding_endpoint: "databricks-gte-large-en"
-  warehouse_id: "d0a9aaf5c9434b89"
+  embedding_service: "databricks-gte-large-en"
+  warehouse_id: "77533c87900b022b"
   experiment_path: "/llmops/mwagenaar-prd"
   metadata_table: "documents_metadata"
   chunks_table: "document_chunks"
