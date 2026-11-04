@@ -14,11 +14,11 @@
       """Add two integers.
 
       Args:
-          a: The first integer.
-          b: The second integer.
+          a: The first number.
+          b: The second number.
 
       Returns:
-          The sum of the two integers.
+          The sum of the two numbers.
 
       Raises:
           ValueError: If either argument is not an integer.
@@ -45,4 +45,4 @@
 - Function and method names should start with a verb.
 - Prefer early returns to reduce nested code and improve readability.
 - Put public functions at the top of the module and private helpers below them, so
-  that the module's interface is immediately clear to readers.
+  that the module's interface is immediately clear to readers. This also applies to classes: public methods should be listed first, followed by private helpers.

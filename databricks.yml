@@ -11,6 +11,21 @@ artifacts:
     build: uv build
     path: .
 
+variables:
+  # Keep these in sync with the per-environment values in project_config.yml.
+  usage_policy_id:
+    description: usage policy id for serverless jobs (usage_policy_id in project_config.yml)
+    default: 0476cb4f-cbf4-34bc-ab5e-133c637fe2d8
+  warehouse_id:
+    description: SQL warehouse for the Genie space (warehouse_id in project_config.yml)
+    default: 77533c87900b022b
+  catalog:
+    description: Unity Catalog catalog (catalog in project_config.yml)
+    default: llmops_dev
+  schema:
+    description: schema holding arxiv_papers (schema in project_config.yml)
+    default: mwagenaar
+
 include:
   - resources/*.yml
 
