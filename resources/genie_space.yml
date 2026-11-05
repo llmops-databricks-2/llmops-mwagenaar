@@ -1,0 +1,87 @@
+resources:
+  genie_spaces:
+    polderbot-space:
+      title: Polderbot meeting documents
+      description: Ask questions about meetings, agenda items and their documents.
+      warehouse_id: "${var.warehouse_id}"
+      serialized_space:
+        version: 2
+        config:
+          sample_questions:
+            - id: "10000000000000000000000000000001"
+              question: ["What are the 10 most recent meetings?"]
+            - id: "10000000000000000000000000000002"
+              question: ["How many distinct meetings were held per month?"]
+            - id: "10000000000000000000000000000003"
+              question: ["Which documents belong to the agenda items?"]
+        data_sources:
+          tables:
+            - identifier: "${var.catalog}.${var.schema}.documents_metadata"
+              column_configs:
+                - column_name: agenda_item_titles
+                  description: ["Titles of the meeting's agenda items, from the parent item to the item containing the document."]
+                  synonyms: ["agenda items", "agenda topics"]
+                - column_name: document_content_type
+                  description: ["Media type of the source document."]
+                - column_name: document_date
+                  description: ["Date when the document was last discussed, as an ISO 8601 string with a time zone."]
+                  synonyms: ["document date"]
+                - column_name: document_id
+                  description: ["Identifier of the document."]
+                  synonyms: ["document id"]
+                - column_name: document_name
+                  description: ["Name of the document reference on the agenda item."]
+                  synonyms: ["document name"]
+                - column_name: document_source_url
+                  description: ["URL of the original document, if available."]
+                - column_name: document_title
+                  description: ["Title of the document."]
+                  synonyms: ["document title"]
+                  enable_entity_matching: true
+                - column_name: ingest_ts
+                  description: ["Timestamp when the row was written to the table."]
+                  enable_format_assistance: true
+                - column_name: ingestion_batch_id
+                  description: ["Identifier of the ingestion batch."]
+                - column_name: markdown_text
+                  description: ["Content of the document as Markdown."]
+                  synonyms: ["document content", "text"]
+                - column_name: meeting_date
+                  description: ["Start time of the meeting as an ISO 8601 string with a time zone."]
+                  synonyms: ["meeting date", "date of meeting"]
+                - column_name: meeting_id
+                  description: ["Identifier of the meeting."]
+                  synonyms: ["meeting id"]
+                - column_name: meeting_title
+                  description: ["Title of the meeting."]
+                  synonyms: ["meeting title", "meeting name"]
+                  enable_entity_matching: true
+                - column_name: pdf_url
+                  description: ["URL of the PDF, if available."]
+                  enable_format_assistance: true
+        instructions:
+          text_instructions:
+            - id: "30000000000000000000000000000001"
+              content:
+                - "Each row in documents_metadata contains a document, its associated meeting and its path of agenda items. A meeting can have multiple documents, and a document can appear more than once."
+                - "Count distinct meetings with COUNT(DISTINCT meeting_id) and distinct documents with COUNT(DISTINCT document_id), unless the question explicitly asks for rows."
+                - "meeting_date and document_date are ISO 8601 strings with time zones, not timestamps. Convert them with CAST(meeting_date AS TIMESTAMP) or CAST(document_date AS TIMESTAMP) for date operations. meeting_date is the start time of the meeting; document_date is the date when the document was last discussed."
+                - "The most recent meetings are those with the latest meeting_date, not the latest ingest_ts. Exclude missing meeting dates when asked for the most recent meetings."
+                - "agenda_item_titles is an array containing the path from parent to child agenda item. Use explode to group by individual agenda items and array_join(agenda_item_titles, ' > ') to display the path."
+                - "When listing documents, show the title or name, meeting and relevant date. Show markdown_text only when the user asks for the content."
+          example_question_sqls:
+            - id: "20000000000000000000000000000001"
+              question: ["What are the 10 most recent meetings?"]
+              sql:
+                - "SELECT DISTINCT meeting_id, meeting_title, CAST(meeting_date AS TIMESTAMP) AS meeting_at "
+                - "FROM ${var.catalog}.${var.schema}.documents_metadata "
+                - "WHERE meeting_date IS NOT NULL "
+                - "ORDER BY meeting_at DESC LIMIT 10"
+            - id: "20000000000000000000000000000002"
+              question: ["How many distinct meetings were held per month?"]
+              sql:
+                - "SELECT date_trunc('month', CAST(meeting_date AS TIMESTAMP)) AS meeting_month, "
+                - "COUNT(DISTINCT meeting_id) AS meeting_count "
+                - "FROM ${var.catalog}.${var.schema}.documents_metadata "
+                - "WHERE meeting_date IS NOT NULL "
+                - "GROUP BY date_trunc('month', CAST(meeting_date AS TIMESTAMP)) ORDER BY meeting_month"
