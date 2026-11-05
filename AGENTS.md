@@ -46,3 +46,4 @@
 - Prefer early returns to reduce nested code and improve readability.
 - Put public functions at the top of the module and private helpers below them, so
   that the module's interface is immediately clear to readers. This also applies to classes: public methods should be listed first, followed by private helpers.
+- No tight coupling: design modules and classes to minimize dependencies on each other, making the codebase easier to maintain and extend.

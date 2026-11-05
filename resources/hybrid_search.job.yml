@@ -16,3 +16,4 @@ resources:
             notebook_path: deployment_notebooks/hybrid_search.py
             base_parameters:
               env: ${bundle.target}
+              genie_space_id: ${resources.genie_spaces.polderbot-space.id}

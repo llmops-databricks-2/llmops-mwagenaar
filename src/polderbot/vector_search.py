@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import urllib.parse
+from datetime import datetime
 from typing import Any
 
 import psycopg
@@ -15,7 +16,8 @@ from psycopg import sql
 from polderbot.config import ProjectConfig
 
 _BRANCH_NAME = "production"
-_ARXIV_RESULT_COLUMNS = ("id", "arxiv_id", "title", "summary", "authors", "year", "month", "day", "text")
+_DEFAULT_TITLE_COLUMN = "document_title"
+_DEFAULT_RESULT_COLUMNS = ("id", "document_id", "document_title", "document_name", "meeting_title", "text")
 
 
 def get_lakebase_branch(project_id: str) -> str:
@@ -53,8 +55,8 @@ class LakebasePgVectorManager:
         embedding_model: str | None = None,
         workspace: WorkspaceClient | None = None,
         synced_table_name: str | None = None,
-        title_column: str = "title",
-        result_columns: tuple[str, ...] = _ARXIV_RESULT_COLUMNS,
+        title_column: str = _DEFAULT_TITLE_COLUMN,
+        result_columns: tuple[str, ...] = _DEFAULT_RESULT_COLUMNS,
     ) -> None:
         self.config = config
         self.catalog = config.catalog if config else catalog
@@ -192,21 +194,37 @@ class LakebasePgVectorManager:
         """
         return self._fetch(sql, params)
 
-    def hybrid_search(
+    def search_documents_hybrid(
         self,
         query: str,
         num_results: int = 5,
-        year: int | None = None,
+        document_date_from: datetime | None = None,
+        document_date_to: datetime | None = None,
         vector_weight: float = 0.7,
     ) -> list[dict[str, Any]]:
-        """Combine cosine similarity and PostgreSQL full-text ranking."""
+        """Combine cosine similarity and full-text ranking with optional date bounds.
+
+        Args:
+            query: Text to search for.
+            num_results: Maximum number of chunks to return.
+            document_date_from: Inclusive timezone-aware lower bound.
+            document_date_to: Inclusive timezone-aware upper bound.
+            vector_weight: Contribution of vector similarity to the final score.
+
+        Returns:
+            Matching chunks and their search scores.
+
+        """
         query_vector = self._vector_literal(self.embed_query(query))
         text_weight = 1.0 - vector_weight
         where = "WHERE embedding IS NOT NULL"
         params: list[Any] = [query_vector, query]
-        if year is not None:
-            where += " AND year = %s"
-            params.append(year)
+        if document_date_from is not None:
+            where += " AND document_date::timestamptz >= %s"
+            params.append(document_date_from)
+        if document_date_to is not None:
+            where += " AND document_date::timestamptz <= %s"
+            params.append(document_date_to)
         params.extend([vector_weight, text_weight, num_results])
         sql = f"""
             WITH ranked AS (
