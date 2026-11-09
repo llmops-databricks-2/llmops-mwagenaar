@@ -1,7 +1,7 @@
 [project]
 name = "polderbot"
 dynamic = ["version"]
-description = "Arxiv Curator - Shared utilities for LLMOps Course on Databricks"
+description = "Polderbot - a public governance document assistant"
 requires-python = "==3.12.*"
 dependencies = [
     "cffi==1.17.1",
@@ -35,6 +35,9 @@ ci = ["pre-commit>=4.1.0, <5",
 [build-system]
 requires = ["setuptools>=72.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["tools"]
 
 [tool.setuptools.packages.find]
 where =["src"]
@@ -79,6 +82,8 @@ docstring-code-format = true
 [dependency-groups]
 dev = [
     "databricks-connect~=18.0.0",
+    "pre-commit>=4.7.0",
+    "pytest>=8.4.2",
     "ruff>=0.17.1",
 ]
 
