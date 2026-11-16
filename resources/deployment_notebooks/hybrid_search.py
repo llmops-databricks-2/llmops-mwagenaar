@@ -5,14 +5,17 @@
 
 import asyncio
 import os
+import time
 from uuid import uuid4
 
+import mlflow
 import nest_asyncio
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.runtime import dbutils
 from loguru import logger
+from mlflow.entities.trace_location import UnityCatalog
 
-from polderbot.agent import PolderAgent
+from polderbot.agent import PolderAgent, remove_session_id_from_span
 from polderbot.config import load_config
 from polderbot.memory import LakebaseMemory
 from polderbot.synced_tables import get_document_chunks_synced_table_name
@@ -27,6 +30,7 @@ _SYSTEM_PROMPT = (
     "You are an assistant for meetings and documents from Wetterskip Fryslân. "
     "Use the available tools to answer questions and cite your sources."
 )
+_TRACE_TABLE_PREFIX = "polderbot_traces"
 
 dbutils.widgets.text("env", "dev")
 dbutils.widgets.text("genie_space_id", "")
@@ -51,6 +55,9 @@ if not genie_tools:
     raise RuntimeError("The Genie MCP server did not provide any tools.")
 
 all_tools = [create_search_documents_tool(pgvector), *genie_tools]
+mlflow.set_experiment(cfg.experiment_path)
+mlflow.tracing.configure(span_processors=[remove_session_id_from_span])  # type: ignore
+
 client_id = dbutils.secrets.get(catalog=cfg.catalog, schema=cfg.schema, key="databricks_client_id")  # type: ignore
 client_secret = dbutils.secrets.get(catalog=cfg.catalog, schema=cfg.schema, key="databricks_client_secret")  # type: ignore
 os.environ["LAKEBASE_SP_CLIENT_ID"] = client_id

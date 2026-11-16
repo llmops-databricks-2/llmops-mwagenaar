@@ -18,6 +18,21 @@ fragments and answers using only those sources, with citations. Example question
 - Summarise the proposal for agenda item X.
 - In which meetings was water-level management discussed?
 
+## First deployment
+
+The Genie space requires the documents metadata table to exist before the full
+bundle can be deployed. Bootstrap the development environment by deploying and
+running the ingestion job first:
+
+```powershell
+databricks bundle deploy --select jobs.ingestion
+databricks bundle run ingestion
+databricks bundle deploy
+```
+
+The ingestion job creates the table only when it finds documents. The deploying
+identity must also have access to the table and the Genie SQL warehouse.
+
 ## Jobs and tasks
 
 The Databricks Asset Bundle in [databricks.yml](databricks.yml) defines
@@ -84,9 +99,11 @@ iteration limit. Hybrid search retrieves document passages, while Genie answers
 structured questions such as document counts.
 
 Initialize `LakebaseMemory` with `ensure_schema()` and reuse a `session_id` to
-resume a conversation. Alternatively, pass `history` without the system prompt
-to bypass memory, or omit both for a one-off conversation. Do not combine
-`history` and `session_id`. The notebook creates new session IDs on each run.
+resume a conversation. If omitted, a new UUID4 session ID is generated for
+each call. Messages are persisted when memory is configured; without memory,
+the call is a one-off conversation. To continue a conversation, supply and
+reuse your own session ID. The notebook creates new session IDs on each run.
+Each turn creates a separate MLflow trace, grouped by its session ID.
 
 Serialize turns for each session externally; incomplete tool exchanges are not
 repaired. Create a new agent when its 20-minute workspace token expires.
