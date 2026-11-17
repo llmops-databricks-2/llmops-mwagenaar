@@ -29,6 +29,7 @@ _MAX_TOOL_ROUNDS = 5
 
 dbutils.widgets.text("env", "dev")
 dbutils.widgets.text("genie_space_id", "")
+dbutils.widgets.text("job_run_id", "")
 env = dbutils.widgets.get("env")
 genie_space_id = dbutils.widgets.get("genie_space_id").strip()
 
@@ -61,12 +62,14 @@ os.environ["LAKEBASE_SP_HOST"] = workspace.config.host
 os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = cfg.warehouse_id
 memory = LakebaseMemory(project_id=cfg.lakebase_project_id, workspace=workspace)
 memory.ensure_schema()
+job_run_id = dbutils.widgets.get("job_run_id").strip()
 agent = PolderAgent(
     workspace=workspace,
     llm_endpoint=cfg.llm_endpoint,
     tools=all_tools,
     memory=memory,
     max_tool_rounds=_MAX_TOOL_ROUNDS,
+    trace_metadata={"job_run_id": job_run_id} if job_run_id else None,
 )
 
 # COMMAND ----------

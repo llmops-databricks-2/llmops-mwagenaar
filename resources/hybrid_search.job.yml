@@ -17,3 +17,4 @@ resources:
             base_parameters:
               env: ${bundle.target}
               genie_space_id: ${resources.genie_spaces.polderbot-space.id}
+              job_run_id: "{{job.run_id}}"

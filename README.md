@@ -66,6 +66,8 @@ use the session messages table.
 
 After the example conversations, the notebook evaluates the agent using the
 configured judge endpoint and logs the results to the MLflow experiment.
+The job passes its run ID to the notebook, which adds it to each agent trace as
+`job_run_id` metadata. Interactive runs omit it when the widget is empty.
 
 The document search tool uses the environment's synced chunks table and
 supports inclusive, timezone-aware `document_date_from` and `document_date_to`
@@ -111,6 +113,8 @@ each call. Messages are persisted when memory is configured; without memory,
 the call is a one-off conversation. To continue a conversation, supply and
 reuse your own session ID. The notebook creates new session IDs on each run.
 Each turn creates a separate MLflow trace, grouped by its session ID.
+Pass `trace_metadata` to `PolderAgent` to add optional string metadata to each
+trace. Avoid including secrets or sensitive data in trace metadata.
 
 Serialize turns for each session externally; incomplete tool exchanges are not
 repaired. Create a new agent when its 20-minute workspace token expires.

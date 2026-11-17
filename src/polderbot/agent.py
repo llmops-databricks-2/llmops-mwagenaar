@@ -63,6 +63,7 @@ class PolderAgent:
         tools: list[ToolInfo] | None = None,
         memory: MessageStore | None = None,
         max_tool_rounds: int = _DEFAULT_MAX_TOOL_ROUNDS,
+        trace_metadata: dict[str, str] | None = None,
     ) -> None:
         """Create an agent using the supplied workspace.
 
@@ -73,6 +74,7 @@ class PolderAgent:
             tools: Optional tools the model can call.
             memory: Optional message store for session-based conversations.
             max_tool_rounds: Maximum tool rounds per user message.
+            trace_metadata: Optional metadata to attach to each agent trace.
 
         Raises:
             ValueError: If max_tool_rounds is negative.
@@ -87,6 +89,7 @@ class PolderAgent:
         self.system_prompt = system_prompt
         self.memory = memory
         self.max_tool_rounds = max_tool_rounds
+        self.trace_metadata = dict(trace_metadata) if trace_metadata is not None else None
         self.tools = {tool.name: tool for tool in tools or []}
         self.tool_specs = [tool.spec for tool in self.tools.values()]
 
@@ -151,7 +154,7 @@ class PolderAgent:
         if session_id is None:
             session_id = str(uuid4())
 
-        mlflow.update_current_trace(session_id=session_id)
+        mlflow.update_current_trace(session_id=session_id, metadata=self.trace_metadata)
 
         messages = self._initialize_messages(message, session_id=session_id)
 
