@@ -17,6 +17,7 @@ class ProjectConfig(BaseModel):
     db_schema: str = Field(..., description="Schema name", alias="schema")
     volume: str = Field(..., description="Volume name")
     llm_endpoint: str = Field(..., description="AI Gateway chat model service name")
+    judge_endpoint: str | None = Field(None, description="Databricks model endpoint for evaluation")
     embedding_endpoint: str = Field(
         ..., description="Embedding serving endpoint for ai_query, AI Search and model resources"
     )

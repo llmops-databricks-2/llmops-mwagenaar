@@ -2,10 +2,14 @@
 
 import json
 from typing import Any, Protocol, cast
+from uuid import uuid4
 
+import mlflow
 from databricks.sdk import WorkspaceClient
+from mlflow.entities import SpanType
+from mlflow.entities.span import LiveSpan
 from openai import OpenAI, omit
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionMessage, ChatCompletionMessageParam
 from openai.types.chat.chat_completion_message_function_tool_call_param import (
     ChatCompletionMessageFunctionToolCallParam,
 )
@@ -13,7 +17,27 @@ from openai.types.chat.chat_completion_message_function_tool_call_param import (
 from polderbot.tools import ToolInfo
 
 _TOKEN_LIFETIME_SECONDS = 1200
-_DEFAULT_MAX_ITERATIONS = 10
+_DEFAULT_MAX_TOOL_ROUNDS = 5
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are an assistant for meetings and documents from Wetterskip Fryslân. "
+    "Use the available tools to answer questions and cite your sources."
+)
+_FINAL_ANSWER_INSTRUCTION = (
+    "No more tools are available. Answer the user's question using the information already gathered. "
+    "If the information is insufficient, say so."
+)
+
+
+def remove_session_id_from_span(span: LiveSpan) -> None:
+    """Remove session IDs from captured span inputs before export.
+
+    Args:
+        span: Span to filter.
+
+    """
+    inputs = span.inputs
+    if isinstance(inputs, dict) and "session_id" in inputs:
+        span.set_inputs({key: value for key, value in inputs.items() if key != "session_id"})
 
 
 class MessageStore(Protocol):
@@ -35,9 +59,11 @@ class PolderAgent:
         self,
         workspace: WorkspaceClient,
         llm_endpoint: str,
-        system_prompt: str,
+        system_prompt: str = _DEFAULT_SYSTEM_PROMPT,
         tools: list[ToolInfo] | None = None,
         memory: MessageStore | None = None,
+        max_tool_rounds: int = _DEFAULT_MAX_TOOL_ROUNDS,
+        trace_metadata: dict[str, str] | None = None,
     ) -> None:
         """Create an agent using the supplied workspace.
 
@@ -47,14 +73,23 @@ class PolderAgent:
             system_prompt: Instructions sent with each conversation.
             tools: Optional tools the model can call.
             memory: Optional message store for session-based conversations.
+            max_tool_rounds: Maximum tool rounds per user message.
+            trace_metadata: Optional metadata to attach to each agent trace.
+
+        Raises:
+            ValueError: If max_tool_rounds is negative.
 
         """
+        if max_tool_rounds < 0:
+            raise ValueError("max_tool_rounds must be non-negative.")
+
         token = workspace.tokens.create(lifetime_seconds=_TOKEN_LIFETIME_SECONDS).token_value
 
         self.llm_endpoint = llm_endpoint
         self.system_prompt = system_prompt
         self.memory = memory
-
+        self.max_tool_rounds = max_tool_rounds
+        self.trace_metadata = dict(trace_metadata) if trace_metadata is not None else None
         self.tools = {tool.name: tool for tool in tools or []}
         self.tool_specs = [tool.spec for tool in self.tools.values()]
 
@@ -64,100 +99,218 @@ class PolderAgent:
     def generate_message(
         self,
         message: str,
-        max_iterations: int = _DEFAULT_MAX_ITERATIONS,
         *,
         session_id: str | None = None,
-        history: list[ChatCompletionMessageParam] | None = None,
     ) -> str:
         """Send a message and execute requested tools until the model responds.
 
-        Pass a session ID to load its history from the configured memory and
-        save each new user, assistant, and tool message as it is generated.
-        Alternatively, pass history directly to bypass memory entirely. History
-        should not contain the system prompt. Passing neither starts a one-off
-        conversation; passing both is not allowed.
+        Pass a session ID to continue a conversation using the configured memory.
+        Otherwise, create a new session ID. When memory is configured, load and
+        save each session's messages as they are generated.
 
         Args:
             message: User request to send to the model.
-            max_iterations: Maximum number of model calls.
-            session_id: Session to load and append; requires configured memory.
-            history: Prior messages to use without reading or writing memory.
+            session_id: Session to continue; requires configured memory when
+                supplied. A new ID is generated when omitted.
 
         Returns:
             The model's final text response.
 
         Raises:
-            ValueError: If the session and history conflict, the store is absent,
-                or the model requests an unsupported tool call type.
-            RuntimeError: If the model provides no text or exhausts the limit.
+            ValueError: If a supplied session has no store or the model requests
+                an unsupported tool call type.
+            RuntimeError: If the model provides no text or requests tools when disabled.
 
         """
-        if session_id is not None and history is not None:
-            raise ValueError("Provide either session_id or history, not both")
+        try:
+            return self._generate_message(message, session_id=session_id)
+        finally:
+            mlflow.flush_trace_async_logging()
+
+    @mlflow.trace(name="generate_message", span_type=SpanType.AGENT)
+    def _generate_message(
+        self,
+        message: str,
+        *,
+        session_id: str | None,
+    ) -> str:
+        """Generate a response within the agent trace.
+
+        Args:
+            message: User request to send to the model.
+            session_id: Session to continue, or None to create a new one.
+
+        Returns:
+            The model's final text response.
+
+        Raises:
+            ValueError: If a supplied session has no store or a tool call is unsupported.
+            RuntimeError: If the model provides no text or requests tools when disabled.
+
+        """
         if session_id is not None and self.memory is None:
             raise ValueError("A message store is required for a session")
 
-        if session_id is not None and self.memory is not None:
+        if session_id is None:
+            session_id = str(uuid4())
+
+        mlflow.update_current_trace(session_id=session_id, metadata=self.trace_metadata)
+
+        messages = self._initialize_messages(message, session_id=session_id)
+
+        for _ in range(self.max_tool_rounds):
+            answer = self._run_iteration(messages, session_id, allow_tools=True)
+
+            if answer is not None:
+                return answer
+
+        final_messages: list[ChatCompletionMessageParam] = [
+            *messages,
+            {"role": "system", "content": _FINAL_ANSWER_INSTRUCTION},
+        ]
+        answer = self._run_iteration(final_messages, session_id, allow_tools=False)
+        if answer is None:
+            raise RuntimeError("Model did not provide a final answer.")
+        return answer
+
+    @mlflow.trace(name="initialize_messages", span_type=SpanType.RETRIEVER)
+    def _initialize_messages(
+        self,
+        message: str,
+        *,
+        session_id: str,
+    ) -> list[ChatCompletionMessageParam]:
+        """Load prior conversation history and append the incoming user message.
+
+        Args:
+            message: User request to append.
+            session_id: Session ID to load from and persist to when configured.
+
+        Returns:
+            The initialized message list including system prompt and user turn.
+
+        """
+        if self.memory is not None:
             previous = cast(list[ChatCompletionMessageParam], self.memory.load_messages(session_id))
         else:
-            previous = list(history) if history is not None else []
+            previous = []
 
-        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": self.system_prompt}, *previous]
+        system_prompt = (
+            f"{self.system_prompt}\n"
+            f"Use at most {self.max_tool_rounds} tool rounds, then answer using the information gathered. "
+            "If the information is insufficient, say so."
+        )
+        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": system_prompt}, *previous]
         user_message: ChatCompletionMessageParam = {"role": "user", "content": message}
         self._append_message(messages, user_message, session_id)
 
-        for _ in range(max_iterations):
-            response = self.client.chat.completions.create(
-                model=self.llm_endpoint,
-                messages=messages,
-                tools=self.tool_specs or omit,  # type: ignore
+        return messages
+
+    @mlflow.trace(name="run_iteration", span_type=SpanType.CHAIN)
+    def _run_iteration(
+        self,
+        messages: list[ChatCompletionMessageParam],
+        session_id: str,
+        *,
+        allow_tools: bool,
+    ) -> str | None:
+        """Execute one model call and any requested function tools.
+
+        Args:
+            messages: Conversation messages updated in place.
+            session_id: Session ID for persisting new messages when configured.
+            allow_tools: Whether this model call may request tools.
+
+        Returns:
+            The model's final text answer, or None when tools were executed.
+
+        Raises:
+            ValueError: If the model requests an unsupported tool call type.
+            RuntimeError: If the model returns neither tool calls nor text, or
+                requests tools when they are disabled.
+
+        """
+        assistant_message = self._call_model(messages, allow_tools=allow_tools)
+
+        if not assistant_message.tool_calls:
+            if assistant_message.content is None:
+                raise RuntimeError("Model did not provide a final answer.")
+
+            self._append_message(messages, {"role": "assistant", "content": assistant_message.content}, session_id)
+            return assistant_message.content
+
+        if not allow_tools:
+            raise RuntimeError("Model requested tools when tools were disabled.")
+
+        calls: list[ChatCompletionMessageFunctionToolCallParam] = []
+
+        for tool_call in assistant_message.tool_calls:
+            if tool_call.type != "function":
+                raise ValueError(f"Unsupported tool call type: {tool_call.type}")
+
+            calls.append(
+                {
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments,
+                    },
+                }
             )
-            assistant_message = response.choices[0].message
+        self._append_message(
+            messages, {"role": "assistant", "content": assistant_message.content, "tool_calls": calls}, session_id
+        )
 
-            if not assistant_message.tool_calls:
-                if assistant_message.content is None:
-                    raise RuntimeError("Model did not provide a final answer.")
+        for call in calls:
+            result = self._execute_tool(call["function"]["name"], call["function"]["arguments"])
+            self._append_message(messages, {"role": "tool", "tool_call_id": call["id"], "content": result}, session_id)
 
-                self._append_message(messages, {"role": "assistant", "content": assistant_message.content}, session_id)
-                return assistant_message.content
+        return None
 
-            calls: list[ChatCompletionMessageFunctionToolCallParam] = []
+    @mlflow.trace(name="call_model", span_type=SpanType.CHAT_MODEL)
+    def _call_model(self, messages: list[ChatCompletionMessageParam], *, allow_tools: bool) -> ChatCompletionMessage:
+        """Request the next assistant message from the chat model.
 
-            for tool_call in assistant_message.tool_calls:
-                if tool_call.type != "function":
-                    raise ValueError(f"Unsupported tool call type: {tool_call.type}")
+        Args:
+            messages: Full conversation history to send to the model.
+            allow_tools: Whether to include the registered tool specifications.
 
-                calls.append(
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments,
-                        },
-                    }
-                )
-            self._append_message(
-                messages, {"role": "assistant", "content": assistant_message.content, "tool_calls": calls}, session_id
-            )
+        Returns:
+            The first choice's assistant message.
 
-            for call in calls:
-                name = call["function"]["name"]
-                arguments = json.loads(call["function"]["arguments"])
-                result = self.tools[name].exec_fn(**arguments)
-                self._append_message(
-                    messages, {"role": "tool", "tool_call_id": call["id"], "content": str(result)}, session_id
-                )
+        """
+        response = self.client.chat.completions.create(
+            model=self.llm_endpoint,
+            messages=messages,
+            tools=(self.tool_specs or omit) if allow_tools else omit,  # type: ignore
+        )
+        return response.choices[0].message
 
-        raise RuntimeError("Model did not provide a final answer within the allowed iterations.")
+    @mlflow.trace(name="execute_tool", span_type=SpanType.TOOL)
+    def _execute_tool(self, name: str, raw_arguments: str) -> str:
+        """Parse JSON tool arguments and invoke the registered tool function.
+
+        Args:
+            name: Registered tool name.
+            raw_arguments: JSON-encoded keyword arguments for the tool.
+
+        Returns:
+            Stringified result returned by the tool's execution function.
+
+        """
+        arguments = json.loads(raw_arguments)
+
+        return str(self.tools[name].exec_fn(**arguments))
 
     def _append_message(
         self,
         messages: list[ChatCompletionMessageParam],
         message: ChatCompletionMessageParam,
-        session_id: str | None,
+        session_id: str,
     ) -> None:
         """Persist a new message before adding it to the conversation."""
-        if session_id is not None and self.memory is not None:
+        if self.memory is not None:
             self.memory.save_messages(session_id, [dict(message)])
+
         messages.append(message)

@@ -3,7 +3,8 @@
 import re
 from uuid import uuid4
 
-from pyspark.sql import SparkSession
+from loguru import logger
+from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql.functions import col, current_timestamp
 
 from polderbot.schemas import CHUNK_METADATA_FIELDS, CHUNK_SCHEMA
@@ -40,23 +41,34 @@ def chunk_meeting_documents(
     """
     chunk_rows: list[dict[str, object]] = []
     documents = spark.table(metadata_table)
+
     if ingestion_batch_id is None:
-        latest = (
-            documents.orderBy(["ingest_ts", "ingestion_batch_id"], ascending=[False, False])
-            .select("ingestion_batch_id")
-            .first()
-        )
+        latest = _get_latest_ingestion_batch(documents)
+
         if latest is None:
             return 0
+
         ingestion_batch_id = latest.ingestion_batch_id
+
     documents = documents.where(col("ingestion_batch_id") == ingestion_batch_id)
+
     for row in documents.toLocalIterator():
         document = row.asDict()
         markdown_text = document["markdown_text"]
+
         if not isinstance(markdown_text, str) or not markdown_text.strip():
             raise ValueError(f"Document {document['document_id']} does not have Markdown text")
+
+        cleaned_text = _clean_text(markdown_text)
+
+        if not cleaned_text:
+            logger.warning(f"Skipping document {document['document_id']}: Markdown is empty after cleaning")
+
+            continue
+
         metadata = {field.name: document[field.name] for field in CHUNK_METADATA_FIELDS}
-        for chunk_number, text in _extract_chunks(_clean_text(markdown_text), chunk_size, overlap):
+
+        for chunk_number, text in _extract_chunks(cleaned_text, chunk_size, overlap):
             chunk_rows.append(
                 {
                     **metadata,
@@ -79,17 +91,35 @@ def chunk_meeting_documents(
     return len(chunk_rows)
 
 
+def _get_latest_ingestion_batch(documents: DataFrame) -> Row | None:
+    """Find the most recent ingestion batch.
+
+    Args:
+        documents: Persisted documents with ingestion timestamps and batch IDs.
+
+    Returns:
+        A row containing the latest batch ID, or None if there are no documents.
+
+    """
+    return (
+        documents.orderBy(["ingest_ts", "ingestion_batch_id"], ascending=[False, False])
+        .select("ingestion_batch_id")
+        .first()
+    )
+
+
 def _clean_text(text: str) -> str:
-    """Normalize line-break hyphenation and whitespace for search.
+    """Normalize text for search and remove NULs incompatible with PostgreSQL.
 
     Args:
         text: Raw Markdown text to normalize.
 
     Returns:
-        Text with line-break hyphenation removed and whitespace collapsed.
+        Text without NULs or line-break hyphenation, with whitespace collapsed.
 
     """
-    dehyphenated_text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
+    dehyphenated_text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text.replace("\x00", ""))
+
     return re.sub(r"\s+", " ", dehyphenated_text).strip()
 
 

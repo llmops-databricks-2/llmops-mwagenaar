@@ -18,6 +18,21 @@ fragments and answers using only those sources, with citations. Example question
 - Summarise the proposal for agenda item X.
 - In which meetings was water-level management discussed?
 
+## First deployment
+
+The Genie space requires the documents metadata table to exist before the full
+bundle can be deployed. Bootstrap the development environment by deploying and
+running the ingestion job first:
+
+```powershell
+databricks bundle deploy --select jobs.ingestion
+databricks bundle run ingestion
+databricks bundle deploy
+```
+
+The ingestion job creates the table only when it finds documents. The deploying
+identity must also have access to the table and the Genie SQL warehouse.
+
 ## Jobs and tasks
 
 The Databricks Asset Bundle in [databricks.yml](databricks.yml) defines
@@ -49,6 +64,11 @@ secrets in the project schema. Lakebase memory uses those service principal
 credentials; the principal needs Lakebase access and permission to create and
 use the session messages table.
 
+After the example conversations, the notebook evaluates the agent using the
+configured judge endpoint and logs the results to the MLflow experiment.
+The job passes its run ID to the notebook, which adds it to each agent trace as
+`job_run_id` metadata. Interactive runs omit it when the widget is empty.
+
 The document search tool uses the environment's synced chunks table and
 supports inclusive, timezone-aware `document_date_from` and `document_date_to`
 bounds. These filter on the date a document was last discussed and exclude
@@ -73,20 +93,28 @@ Model selects tools or answers directly
 Execute requested tools and save messages and results
         |
         v
-Return tool results to the model; repeat within the iteration limit
+Return tool results to the model; repeat within the tool-round limit
         |
         v
-Save and return the final answer
+Generate without tools if the limit is reached; save and return the answer
 ```
 
-The model chooses tools and arguments; code handles execution, memory and the
-iteration limit. Hybrid search retrieves document passages, while Genie answers
-structured questions such as document counts.
+The model chooses tools and arguments; code handles execution and memory. Each
+user message allows up to `max_tool_rounds` tool rounds (five by default), each
+of which can contain multiple tool calls. Set it to zero to disable tool rounds.
+If the model has not answered after those rounds, it receives the
+results and must answer in a final call without tools. Hybrid search retrieves
+document passages, while Genie answers structured questions such as document
+counts. The agent provides a default system prompt, which can be overridden.
 
 Initialize `LakebaseMemory` with `ensure_schema()` and reuse a `session_id` to
-resume a conversation. Alternatively, pass `history` without the system prompt
-to bypass memory, or omit both for a one-off conversation. Do not combine
-`history` and `session_id`. The notebook creates new session IDs on each run.
+resume a conversation. If omitted, a new UUID4 session ID is generated for
+each call. Messages are persisted when memory is configured; without memory,
+the call is a one-off conversation. To continue a conversation, supply and
+reuse your own session ID. The notebook creates new session IDs on each run.
+Each turn creates a separate MLflow trace, grouped by its session ID.
+Pass `trace_metadata` to `PolderAgent` to add optional string metadata to each
+trace. Avoid including secrets or sensitive data in trace metadata.
 
 Serialize turns for each session externally; incomplete tool exchanges are not
 repaired. Create a new agent when its 20-minute workspace token expires.
