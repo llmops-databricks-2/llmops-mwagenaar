@@ -1,0 +1,42 @@
+[
+  {
+    "inputs": {
+      "message": "Waarom neemt de leveringszekerheid van zoetwater uit het IJsselmeer af?"
+    },
+    "expectations": {
+      "expected_response": "Door klimaatverandering verandert de Rijn van een gletsjerrivier in een regenwaterrivier. Daardoor wordt de afvoer grilliger: hoog in de winter en laag in de zomer, waardoor de aanvoer naar het IJsselmeer afneemt."
+    }
+  },
+  {
+    "inputs": {
+      "message": "Waarom hoeft niet langer minstens één geborgde categorie in het dagelijks bestuur van Wetterskip Fryslân vertegenwoordigd te zijn?"
+    },
+    "expectations": {
+      "expected_response": "Door een wijziging van de Waterschapswet op 9 december 2022 is deze verplichting vervallen."
+    }
+  },
+  {
+    "inputs": {
+      "message": "Waarom ligt het project natuurvriendelijke oever Grou stil?"
+    },
+    "expectations": {
+      "expected_response": "Het project ligt stil omdat de provincie geen vergunning op grond van de natuurbeschermingswet kan afgeven."
+    }
+  },
+  {
+    "inputs": {
+      "message": "Wat is de jaarlijkse bijdrage van Wetterskip Fryslân aan Wetsus vanaf 2023?"
+    },
+    "expectations": {
+      "expected_response": "Vanaf 2023 draagt Wetterskip Fryslân €61.600 per jaar bij aan Wetsus."
+    }
+  },
+  {
+    "inputs": {
+      "message": "Hoe is de onafhankelijkheid van de bezwarencommissie van Wetterskip Fryslân geregeld?"
+    },
+    "expectations": {
+      "expected_response": "De commissie is ingesteld op basis van artikel 7:13 van de Algemene wet bestuursrecht, en de onafhankelijkheid staat expliciet in de Verordening behandeling bezwaren Wetterskip Fryslân."
+    }
+  }
+]

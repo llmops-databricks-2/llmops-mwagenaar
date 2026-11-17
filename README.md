@@ -64,6 +64,9 @@ secrets in the project schema. Lakebase memory uses those service principal
 credentials; the principal needs Lakebase access and permission to create and
 use the session messages table.
 
+After the example conversations, the notebook evaluates the agent using the
+configured judge endpoint and logs the results to the MLflow experiment.
+
 The document search tool uses the environment's synced chunks table and
 supports inclusive, timezone-aware `document_date_from` and `document_date_to`
 bounds. These filter on the date a document was last discussed and exclude
@@ -88,15 +91,19 @@ Model selects tools or answers directly
 Execute requested tools and save messages and results
         |
         v
-Return tool results to the model; repeat within the iteration limit
+Return tool results to the model; repeat within the tool-round limit
         |
         v
-Save and return the final answer
+Generate without tools if the limit is reached; save and return the answer
 ```
 
-The model chooses tools and arguments; code handles execution, memory and the
-iteration limit. Hybrid search retrieves document passages, while Genie answers
-structured questions such as document counts.
+The model chooses tools and arguments; code handles execution and memory. Each
+user message allows up to `max_tool_rounds` tool rounds (five by default), each
+of which can contain multiple tool calls. Set it to zero to disable tool rounds.
+If the model has not answered after those rounds, it receives the
+results and must answer in a final call without tools. Hybrid search retrieves
+document passages, while Genie answers structured questions such as document
+counts. The agent provides a default system prompt, which can be overridden.
 
 Initialize `LakebaseMemory` with `ensure_schema()` and reuse a `session_id` to
 resume a conversation. If omitted, a new UUID4 session ID is generated for

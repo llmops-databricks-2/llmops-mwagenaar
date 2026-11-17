@@ -17,7 +17,15 @@ from openai.types.chat.chat_completion_message_function_tool_call_param import (
 from polderbot.tools import ToolInfo
 
 _TOKEN_LIFETIME_SECONDS = 1200
-_DEFAULT_MAX_ITERATIONS = 10
+_DEFAULT_MAX_TOOL_ROUNDS = 5
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are an assistant for meetings and documents from Wetterskip Fryslân. "
+    "Use the available tools to answer questions and cite your sources."
+)
+_FINAL_ANSWER_INSTRUCTION = (
+    "No more tools are available. Answer the user's question using the information already gathered. "
+    "If the information is insufficient, say so."
+)
 
 
 def remove_session_id_from_span(span: LiveSpan) -> None:
@@ -51,10 +59,10 @@ class PolderAgent:
         self,
         workspace: WorkspaceClient,
         llm_endpoint: str,
-        system_prompt: str,
+        system_prompt: str = _DEFAULT_SYSTEM_PROMPT,
         tools: list[ToolInfo] | None = None,
         memory: MessageStore | None = None,
-        max_iterations: int = _DEFAULT_MAX_ITERATIONS,
+        max_tool_rounds: int = _DEFAULT_MAX_TOOL_ROUNDS,
     ) -> None:
         """Create an agent using the supplied workspace.
 
@@ -64,16 +72,21 @@ class PolderAgent:
             system_prompt: Instructions sent with each conversation.
             tools: Optional tools the model can call.
             memory: Optional message store for session-based conversations.
-            max_iterations: Maximum number of model calls per message.
+            max_tool_rounds: Maximum tool rounds per user message.
+
+        Raises:
+            ValueError: If max_tool_rounds is negative.
 
         """
+        if max_tool_rounds < 0:
+            raise ValueError("max_tool_rounds must be non-negative.")
+
         token = workspace.tokens.create(lifetime_seconds=_TOKEN_LIFETIME_SECONDS).token_value
 
         self.llm_endpoint = llm_endpoint
         self.system_prompt = system_prompt
         self.memory = memory
-        self.max_iterations = max_iterations
-
+        self.max_tool_rounds = max_tool_rounds
         self.tools = {tool.name: tool for tool in tools or []}
         self.tool_specs = [tool.spec for tool in self.tools.values()]
 
@@ -103,7 +116,7 @@ class PolderAgent:
         Raises:
             ValueError: If a supplied session has no store or the model requests
                 an unsupported tool call type.
-            RuntimeError: If the model provides no text or exhausts the limit.
+            RuntimeError: If the model provides no text or requests tools when disabled.
 
         """
         try:
@@ -129,7 +142,7 @@ class PolderAgent:
 
         Raises:
             ValueError: If a supplied session has no store or a tool call is unsupported.
-            RuntimeError: If the model provides no text or exhausts the limit.
+            RuntimeError: If the model provides no text or requests tools when disabled.
 
         """
         if session_id is not None and self.memory is None:
@@ -142,15 +155,22 @@ class PolderAgent:
 
         messages = self._initialize_messages(message, session_id=session_id)
 
-        for _ in range(self.max_iterations):
-            answer = self._run_iteration(messages, session_id)
+        for _ in range(self.max_tool_rounds):
+            answer = self._run_iteration(messages, session_id, allow_tools=True)
 
             if answer is not None:
                 return answer
 
-        raise RuntimeError("Model did not provide a final answer within the allowed iterations.")
+        final_messages: list[ChatCompletionMessageParam] = [
+            *messages,
+            {"role": "system", "content": _FINAL_ANSWER_INSTRUCTION},
+        ]
+        answer = self._run_iteration(final_messages, session_id, allow_tools=False)
+        if answer is None:
+            raise RuntimeError("Model did not provide a final answer.")
+        return answer
 
-    @mlflow.trace(name="initialize_messages", span_type=SpanType.MEMORY)
+    @mlflow.trace(name="initialize_messages", span_type=SpanType.RETRIEVER)
     def _initialize_messages(
         self,
         message: str,
@@ -172,7 +192,12 @@ class PolderAgent:
         else:
             previous = []
 
-        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": self.system_prompt}, *previous]
+        system_prompt = (
+            f"{self.system_prompt}\n"
+            f"Use at most {self.max_tool_rounds} tool rounds, then answer using the information gathered. "
+            "If the information is insufficient, say so."
+        )
+        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": system_prompt}, *previous]
         user_message: ChatCompletionMessageParam = {"role": "user", "content": message}
         self._append_message(messages, user_message, session_id)
 
@@ -183,22 +208,26 @@ class PolderAgent:
         self,
         messages: list[ChatCompletionMessageParam],
         session_id: str,
+        *,
+        allow_tools: bool,
     ) -> str | None:
         """Execute one model call and any requested function tools.
 
         Args:
             messages: Conversation messages updated in place.
             session_id: Session ID for persisting new messages when configured.
+            allow_tools: Whether this model call may request tools.
 
         Returns:
             The model's final text answer, or None when tools were executed.
 
         Raises:
             ValueError: If the model requests an unsupported tool call type.
-            RuntimeError: If the model returns neither tool calls nor text.
+            RuntimeError: If the model returns neither tool calls nor text, or
+                requests tools when they are disabled.
 
         """
-        assistant_message = self._call_model(messages)
+        assistant_message = self._call_model(messages, allow_tools=allow_tools)
 
         if not assistant_message.tool_calls:
             if assistant_message.content is None:
@@ -206,6 +235,9 @@ class PolderAgent:
 
             self._append_message(messages, {"role": "assistant", "content": assistant_message.content}, session_id)
             return assistant_message.content
+
+        if not allow_tools:
+            raise RuntimeError("Model requested tools when tools were disabled.")
 
         calls: list[ChatCompletionMessageFunctionToolCallParam] = []
 
@@ -234,11 +266,12 @@ class PolderAgent:
         return None
 
     @mlflow.trace(name="call_model", span_type=SpanType.CHAT_MODEL)
-    def _call_model(self, messages: list[ChatCompletionMessageParam]) -> ChatCompletionMessage:
+    def _call_model(self, messages: list[ChatCompletionMessageParam], *, allow_tools: bool) -> ChatCompletionMessage:
         """Request the next assistant message from the chat model.
 
         Args:
             messages: Full conversation history to send to the model.
+            allow_tools: Whether to include the registered tool specifications.
 
         Returns:
             The first choice's assistant message.
@@ -247,7 +280,7 @@ class PolderAgent:
         response = self.client.chat.completions.create(
             model=self.llm_endpoint,
             messages=messages,
-            tools=self.tool_specs or omit,  # type: ignore
+            tools=(self.tool_specs or omit) if allow_tools else omit,  # type: ignore
         )
         return response.choices[0].message
 

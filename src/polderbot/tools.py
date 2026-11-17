@@ -7,9 +7,11 @@ from functools import partial
 
 from databricks.sdk import WorkspaceClient
 from databricks_mcp import DatabricksMCPClient
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from polderbot.vector_search import LakebasePgVectorManager
+
+_MAX_SEARCH_RESULTS = 5
 
 
 class ToolInfo(BaseModel):
@@ -33,8 +35,9 @@ class ToolInfo(BaseModel):
 class SearchDocumentsArgs(BaseModel):
     """Arguments supplied by the model for document search."""
 
+    model_config = ConfigDict(extra="forbid")
+
     query: str = Field(min_length=1, description="Text to search for in meeting documents.")
-    num_results: int = Field(default=5, gt=0, description="Maximum number of matching chunks.")
     document_date_from: AwareDatetime | None = Field(
         default=None,
         description="Inclusive lower bound as an ISO 8601 datetime with timezone.",
@@ -47,7 +50,6 @@ class SearchDocumentsArgs(BaseModel):
 
 def search_documents(
     query: str,
-    num_results: int = 5,
     document_date_from: datetime | None = None,
     document_date_to: datetime | None = None,
     *,
@@ -57,7 +59,6 @@ def search_documents(
 
     Args:
         query: Text to search for.
-        num_results: Maximum number of matching chunks.
         document_date_from: Inclusive timezone-aware lower bound.
         document_date_to: Inclusive timezone-aware upper bound.
         pgvector: Manager configured for the document chunks synced table.
@@ -72,12 +73,11 @@ def search_documents(
     args = SearchDocumentsArgs.model_validate(
         {
             "query": query,
-            "num_results": num_results,
             "document_date_from": document_date_from,
             "document_date_to": document_date_to,
         }
     )
-    results = pgvector.search_documents_hybrid(**args.model_dump())
+    results = pgvector.search_documents_hybrid(**args.model_dump(), num_results=_MAX_SEARCH_RESULTS)
     return json.dumps(results, ensure_ascii=False)
 
 
@@ -97,7 +97,10 @@ def create_search_documents_tool(pgvector: LakebasePgVectorManager) -> ToolInfo:
             "type": "function",
             "function": {
                 "name": "search_documents",
-                "description": "Search meeting documents using hybrid vector and keyword search.",
+                "description": (
+                    "Search meeting documents using hybrid vector and keyword search. "
+                    "Returns up to 5 matching chunks per call."
+                ),
                 "parameters": SearchDocumentsArgs.model_json_schema(),
             },
         },

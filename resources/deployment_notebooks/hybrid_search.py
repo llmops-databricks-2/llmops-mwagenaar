@@ -5,7 +5,6 @@
 
 import asyncio
 import os
-import time
 from uuid import uuid4
 
 import mlflow
@@ -13,10 +12,10 @@ import nest_asyncio
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.runtime import dbutils
 from loguru import logger
-from mlflow.entities.trace_location import UnityCatalog
 
 from polderbot.agent import PolderAgent, remove_session_id_from_span
 from polderbot.config import load_config
+from polderbot.evaluation import evaluate_agent
 from polderbot.memory import LakebaseMemory
 from polderbot.synced_tables import get_document_chunks_synced_table_name
 from polderbot.tools import create_mcp_tools, create_search_documents_tool
@@ -26,11 +25,7 @@ nest_asyncio.apply()
 
 # COMMAND ----------
 
-_SYSTEM_PROMPT = (
-    "You are an assistant for meetings and documents from Wetterskip Fryslân. "
-    "Use the available tools to answer questions and cite your sources."
-)
-_TRACE_TABLE_PREFIX = "polderbot_traces"
+_MAX_TOOL_ROUNDS = 5
 
 dbutils.widgets.text("env", "dev")
 dbutils.widgets.text("genie_space_id", "")
@@ -63,14 +58,15 @@ client_secret = dbutils.secrets.get(catalog=cfg.catalog, schema=cfg.schema, key=
 os.environ["LAKEBASE_SP_CLIENT_ID"] = client_id
 os.environ["LAKEBASE_SP_CLIENT_SECRET"] = client_secret
 os.environ["LAKEBASE_SP_HOST"] = workspace.config.host
+os.environ["MLFLOW_TRACING_SQL_WAREHOUSE_ID"] = cfg.warehouse_id
 memory = LakebaseMemory(project_id=cfg.lakebase_project_id, workspace=workspace)
 memory.ensure_schema()
 agent = PolderAgent(
     workspace=workspace,
     llm_endpoint=cfg.llm_endpoint,
-    system_prompt=_SYSTEM_PROMPT,
     tools=all_tools,
     memory=memory,
+    max_tool_rounds=_MAX_TOOL_ROUNDS,
 )
 
 # COMMAND ----------
@@ -104,3 +100,8 @@ new_conversation_response = agent.generate_message(
     session_id=new_session_id,
 )
 logger.info(new_conversation_response)
+
+# COMMAND ----------
+
+evaluation_results = evaluate_agent(agent, cfg.judge_endpoint)
+evaluation_results  # type: ignore # noqa: B018

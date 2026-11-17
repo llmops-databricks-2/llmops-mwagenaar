@@ -43,6 +43,9 @@ py-modules = ["tools"]
 where =["src"]
 include = ["polderbot*"]
 
+[tool.setuptools.package-data]
+polderbot = ["resources/*.json"]
+
 [tool.setuptools.dynamic]
 version = { file = "version.txt" }
 
